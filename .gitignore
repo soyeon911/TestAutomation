@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / coverage / reports (00overview §5: reports/ is gitignored)
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+reports/
+
+# DB
+*.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

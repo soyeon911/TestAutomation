@@ -1,0 +1,37 @@
+# Phase 1 — Jenkins 컨트롤러 (방식 A: Docker 소켓 마운트 + 커스텀 이미지)
+#
+# 최초/이미지 변경 시:  docker compose -f ci/docker-compose.yml up -d --build
+# 기동:                 docker compose -f ci/docker-compose.yml up -d
+# 정지:                 docker compose -f ci/docker-compose.yml down        (볼륨 유지)
+# 완전 초기화:          docker compose -f ci/docker-compose.yml down -v     (설정 전부 삭제)
+#
+# 플러그인은 이미지에 사전 설치(pre-bake)되고 설치 마법사는 비활성화하므로,
+# 첫 부팅 때 플러그인 다운로드(미러 타임아웃)가 발생하지 않는다.
+# 보안 설정은 localhost 학습용으로 열려 있다. 잠그려면 Manage Jenkins → Security 에서 설정.
+
+services:
+  jenkins:
+    build:
+      context: ..                       # 빌드 컨텍스트 = 저장소 루트 (COPY ci/plugins.txt 위해)
+      dockerfile: ci/Dockerfile.jenkins
+    image: url-shortener-jenkins:lts     # 빌드 결과 이미지 태그
+    container_name: jenkins-controller
+    restart: unless-stopped
+    ports:
+      - "8080:8080"      # 웹 UI
+      - "50000:50000"    # 인바운드 에이전트
+    volumes:
+      - jenkins_home:/var/jenkins_home             # 설정·작업·플러그인 영속화(명명 볼륨)
+      - /var/run/docker.sock:/var/run/docker.sock  # 방식 A: 호스트 Docker 사용
+    environment:
+      # 플러그인이 사전 설치돼 있으므로 설치 마법사를 끈다(다운로드 단계 회피).
+      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"
+    group_add:
+      # 마운트된 docker.sock 은 Docker Desktop(macOS)에서 root:root(gid 0, srw-rw----)다.
+      # jenkins 유저(uid 1000)를 group 0 에 추가해야 소켓 접근(방식 A)이 가능하다.
+      # Linux 호스트라면 `getent group docker` 의 GID 로 바꾼다.
+      - "0"
+
+volumes:
+  jenkins_home:
+    name: jenkins_home

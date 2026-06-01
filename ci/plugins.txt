@@ -1,0 +1,23 @@
+# Phase 1 (F1-3) — 프로젝트 전용 Jenkins 플러그인 목록
+# jenkins-plugin-cli 형식: 한 줄에 plugin 하나(버전 미지정 시 최신 + 의존성 자동 해결).
+# 인라인 주석(# ...)은 파싱 실패를 유발하므로 설명은 전체 줄 주석으로만 둔다.
+
+# Pipeline (Jenkinsfile)
+workflow-aggregator
+# Git SCM + GitHub 연동·커밋 상태 보고 (Phase 5)
+git
+github
+# Docker Pipeline: agent { docker { ... } } (Phase 2~)
+docker-workflow
+# 테스트 결과 트렌드 (Phase 2/4)
+junit
+# Code Coverage API: 커버리지 트렌드 (Phase 4)
+coverage
+# Allure 리포트 (Phase 4)
+allure-jenkins-plugin
+# Warnings Next Generation: ruff/mypy 경고 집계 (Phase 3)
+warnings-ng
+# 파이프라인 시각화 (선택)
+blueocean
+# Slack Notification (Phase 6)
+slack

@@ -1,0 +1,28 @@
+# Phase 1 — 방식 A 컨트롤러 커스텀 이미지
+#
+# 목적:
+#  1) 플러그인을 빌드 시점에 사전 설치(pre-bake) → 첫 부팅 때 설치 마법사가 플러그인을
+#     다운로드하다 미러(get/updates.jenkins.io → 칭화)로 리다이렉트돼 타임아웃 나는 문제를 회피.
+#     JENKINS_UC_DOWNLOAD 를 archives.jenkins.io 로 고정 → 지오-미러를 안 타고 .hpi 직접(200) 수신.
+#  2) docker CLI(클라이언트 전용 정적 바이너리) 포함 → 파이프라인이 마운트된 호스트 소켓으로
+#     python:3.12-slim 에이전트를 기동(방식 A). 데몬은 실행하지 않는다.
+#
+# 빌드:  docker compose -f ci/docker-compose.yml build
+# 또는:  docker build -t url-shortener-jenkins:lts -f ci/Dockerfile.jenkins .
+
+FROM jenkins/jenkins:lts-jdk17
+
+USER root
+
+# (1) 플러그인 사전 설치 — 미러 리다이렉트를 피해 archives.jenkins.io 에서 직접 받는다.
+#     비싼 단계이므로 앞에 두어 docker CLI 변경 시에도 캐시가 보존되게 한다.
+ENV JENKINS_UC_DOWNLOAD=https://archives.jenkins.io
+COPY ci/plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+
+# (2) docker CLI(클라이언트 전용) 정적 바이너리 설치. curl/tar 는 베이스 이미지에 포함.
+#     uname -m → aarch64(Apple Silicon)/x86_64 자동 대응. /usr/local/bin 은 PATH 에 있음.
+ARG DOCKER_CLI_VERSION=27.3.1
+RUN arch="$(uname -m)" && curl -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz && tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker && rm /tmp/docker.tgz && docker --version
+
+USER jenkins
