@@ -8,7 +8,7 @@ Jenkins 기반 테스트 자동화 파이프라인의 **검증 대상(SUT)** 인
 - [x] **Phase 0** — 타깃 앱 + 3계층 테스트 ([`markdown/01phase0_target_app.md`](markdown/01phase0_target_app.md))
 - [x] **Phase 1** — Jenkins 컨트롤러 구동 (Docker) ([`markdown/02phase1jenkins_setup.md`](markdown/02phase1jenkins_setup.md))
 - [x] **Phase 2** — 기본 파이프라인 (Jenkinsfile) ([`markdown/03phase2basic_pipeline.md`](markdown/03phase2basic_pipeline.md))
-- [ ] Phase 3 — 품질 게이트
+- [x] **Phase 3** — 품질 게이트 & 병렬화 ([`markdown/04phase3quality_gates.md`](markdown/04phase3quality_gates.md))
 - [ ] Phase 4 — 리포트 트렌드
 - [ ] Phase 5 — 트리거
 - [ ] Phase 6 — 고급
@@ -152,6 +152,36 @@ Checkout (checkout scm)
 - [x] pytest 36개 통과, 빌드 페이지에 테스트 결과 표시(`junit` 등록).
 - [x] 같은 커밋 재빌드 시 동일 결과(멱등성 — venv/캐시는 워크스페이스 격리).
 - [x] 테스트를 깨뜨리면 종료 코드≠0 으로 stage 실패 → 빌드 빨간색.
+
+---
+
+## Phase 3 — 품질 게이트 & 병렬화
+
+[`Jenkinsfile`](Jenkinsfile)을 확장해 **통과 기준이 있는 관문**으로 만든다. 설치(Setup) 후
+4개 검사를 `parallel`로 동시에 실행하고, 하나라도 위반하면 빌드를 실패시킨다.
+
+```
+Checkout → Setup ──▶ Quality Gates (parallel, failFast=false)
+                        ├─ Lint    : ruff check .
+                        ├─ Format  : ruff format --check .
+                        ├─ Type    : mypy app
+                        └─ Test    : pytest --cov-fail-under=80
+```
+
+핵심 설계:
+- **단일 설치 + 공유**: Setup에서 venv에 1회 설치 → 4개 병렬 stage가 같은 워크스페이스/venv를 공유(중복 `pip install` 방지). 도구는 `$VENV/bin/...` 절대경로로 호출.
+- **failFast=false**: 하나가 실패해도 나머지를 끝까지 실행 → 모든 위반을 한 빌드에서 확인.
+- **커버리지 게이트**: `--cov-fail-under=80`(환경변수 `COV_MIN`). 미달 시 pytest가 비0 종료 → 빌드 실패. 기준선은 단계적으로 상향 가능.
+- **산출물 분리**: Test만 `reports/`에 junit/coverage XML 생성 → 병렬 stage 간 파일 충돌 없음.
+- **검사만, 자동수정 아님**: `ruff format --check`로 확인만 한다. 수정은 로컬/pre-commit에서.
+
+### 완료 기준 검증 ✅
+- [x] 4개 게이트가 병렬 실행(Stage View / Blue Ocean에서 4갈래 확인).
+- [x] 모든 게이트 통과 시에만 녹색 — 현재 lint/format/type 통과 + 커버리지 94.7%(≥80).
+- [x] 병렬 stage 간 산출물 경로 충돌 없음.
+- [ ] (수동 확인) 포맷/타입을 깨면 해당 게이트만 실패, 커버리지를 80% 미만으로 떨어뜨리면 실패.
+
+> Warnings NG 경고 추이(F3-7)는 선택 항목으로, 차후 `recordIssues`로 ruff/mypy 결과를 시각화해 추가할 수 있다.
 
 ---
 
