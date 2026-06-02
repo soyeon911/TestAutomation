@@ -14,6 +14,10 @@ import string
 ALPHABET = string.ascii_letters + string.digits
 DEFAULT_LENGTH = 7
 
+# 커스텀 별칭 허용 길이 범위.
+CUSTOM_ALIAS_MIN_LENGTH = 4
+CUSTOM_ALIAS_MAX_LENGTH = 32
+
 # 프로덕션 기본값: 시드 불가능한 암호학적 난수원.
 _DEFAULT_RNG = random.SystemRandom()
 
@@ -38,3 +42,13 @@ def generate_short_code(length: int = DEFAULT_LENGTH, *, rng: random.Random | No
 def is_valid_short_code(code: str) -> bool:
     """문자열이 base62 문자로만 구성된 비어있지 않은 코드인지 검사한다."""
     return len(code) > 0 and all(c in ALPHABET for c in code)
+
+
+def is_valid_custom_alias(alias: str) -> bool:
+    """사용자가 지정한 커스텀 별칭이 유효한지 검사한다.
+
+    유효 조건: 길이 CUSTOM_ALIAS_MIN_LENGTH~CUSTOM_ALIAS_MAX_LENGTH + base62 문자만.
+    """
+    if not CUSTOM_ALIAS_MIN_LENGTH <= len(alias) <= CUSTOM_ALIAS_MAX_LENGTH:
+        return False
+    return all(c in ALPHABET for c in alias)

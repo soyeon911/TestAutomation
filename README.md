@@ -36,9 +36,16 @@ tests/{unit,integration,api}/   # 3계층
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/health` | 헬스 체크 (스모크 테스트용) |
-| POST | `/api/urls` | `{"url": "..."}` → 단축 코드 발급 (201) |
-| GET | `/api/urls/{code}` | 통계 조회 (`clicks`, `created_at`) |
-| GET | `/{code}` | 원본 URL로 307 리다이렉트 + 클릭 수 증가 |
+| POST | `/api/urls` | 단축 코드 발급 (201). 옵션: `custom_alias`(중복 409·형식 400), `expires_in_seconds`(TTL) |
+| GET | `/api/urls` | 목록 조회 (`limit`·`offset` 페이지네이션, 최신순) |
+| GET | `/api/urls/{code}` | 통계 조회 (`clicks`, `created_at`, `expires_at`) |
+| DELETE | `/api/urls/{code}` | 삭제 (204 / 404) |
+| GET | `/{code}` | 307 리다이렉트 + 클릭 수 증가. 만료 시 **410 Gone** |
+
+> SUT 확장(2026-06): 커스텀 별칭·만료(TTL)·삭제·목록 기능을 추가하고, 각 기능의 정상/에러/경계
+> 케이스 + Hypothesis 속성 기반 테스트를 더해 테스트가 **36 → 89개**(unit 50·integration 12·api 27),
+> 커버리지 95%로 늘었다. 만료 비교를 위해 `UTCDateTime` 타입 데코레이터로 SQLite 왕복 시
+> timezone-aware(UTC)를 보장한다.
 
 ### 로컬 실행 / 테스트
 ```bash
@@ -149,7 +156,7 @@ Checkout (checkout scm)
 
 ### 완료 기준 검증 ✅
 - [x] 빌드가 `python:3.12-slim` 컨테이너에서 실행됨(로그의 `docker run ... python:3.12-slim` 확인).
-- [x] pytest 36개 통과, 빌드 페이지에 테스트 결과 표시(`junit` 등록).
+- [x] pytest 통과(현재 89개), 빌드 페이지에 테스트 결과 표시(`junit` 등록).
 - [x] 같은 커밋 재빌드 시 동일 결과(멱등성 — venv/캐시는 워크스페이스 격리).
 - [x] 테스트를 깨뜨리면 종료 코드≠0 으로 stage 실패 → 빌드 빨간색.
 

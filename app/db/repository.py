@@ -39,3 +39,17 @@ class URLRepository:
         self._session.commit()
         self._session.refresh(record)
         return record
+
+    def delete(self, short_code: str) -> bool:
+        """단축 코드 레코드를 삭제한다. 삭제했으면 True, 없었으면 False."""
+        record = self.get_by_code(short_code)
+        if record is None:
+            return False
+        self._session.delete(record)
+        self._session.commit()
+        return True
+
+    def list_records(self, *, limit: int, offset: int) -> list[URLRecord]:
+        """생성 순(최신 우선)으로 레코드를 페이지네이션해 조회한다."""
+        stmt = select(URLRecord).order_by(URLRecord.id.desc()).limit(limit).offset(offset)
+        return list(self._session.scalars(stmt).all())
