@@ -4,6 +4,8 @@
 
 # Pipeline (Jenkinsfile)
 workflow-aggregator
+# 빌드 로그 타임스탬프 (Jenkinsfile options { timestamps() })
+timestamper
 # Git SCM + GitHub 연동·커밋 상태 보고 (Phase 5)
 git
 github

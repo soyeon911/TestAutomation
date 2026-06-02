@@ -7,7 +7,7 @@ Jenkins 기반 테스트 자동화 파이프라인의 **검증 대상(SUT)** 인
 
 - [x] **Phase 0** — 타깃 앱 + 3계층 테스트 ([`markdown/01phase0_target_app.md`](markdown/01phase0_target_app.md))
 - [x] **Phase 1** — Jenkins 컨트롤러 구동 (Docker) ([`markdown/02phase1jenkins_setup.md`](markdown/02phase1jenkins_setup.md))
-- [ ] Phase 2 — 기본 파이프라인
+- [x] **Phase 2** — 기본 파이프라인 (Jenkinsfile) ([`markdown/03phase2basic_pipeline.md`](markdown/03phase2basic_pipeline.md))
 - [ ] Phase 3 — 품질 게이트
 - [ ] Phase 4 — 리포트 트렌드
 - [ ] Phase 5 — 트리거
@@ -111,6 +111,47 @@ Manage Jenkins → Security 에서 인증/권한을 설정한다.
 
 ### 자격 증명 (F1-5)
 GitHub 토큰·웹훅 시크릿·알림 웹훅은 Manage Jenkins → Credentials 에만 저장한다(코드/로그 노출 금지).
+
+---
+
+## Phase 2 — 기본 파이프라인 (Jenkinsfile)
+
+저장소 루트 [`Jenkinsfile`](Jenkinsfile)에 Declarative 파이프라인을 정의한다. 전 stage가
+`python:3.12-slim` 컨테이너(방식 A)에서 실행되어 "내 PC에선 됐는데" 문제를 제거한다.
+
+```
+Checkout (checkout scm)
+  → Setup  (venv 생성 + pip install -e ".[dev]")
+  → Test   (pytest --junitxml=reports/junit.xml --cov)
+  → post   (junit 결과 등록 + reports 아카이브)
+```
+
+핵심 설계:
+- **venv 격리 설치**: 에이전트는 uid 1000으로 실행돼 시스템 경로에 쓸 수 없으므로, 워크스페이스 안 `.venv`에 설치한다. pip 캐시(`.pip-cache`)는 빌드 간 재사용.
+- **워크스페이스 공유**: docker-workflow 플러그인이 `--volumes-from <컨트롤러>`로 jenkins_home 볼륨을 에이전트에 공유 → 소켓 마운트 환경에서도 워크스페이스 경로가 일치.
+
+### Jenkins 잡
+"Pipeline script from SCM" 잡 `url-shortener-ci`가 GitHub repo(`*/main`, `Jenkinsfile`)를 가리킨다.
+**"Build Now"** 로 수동 실행하면 위 stage가 순서대로 수행된다.
+(잡 설정 참고: [`ci/jenkins-job-url-shortener-ci.xml`](ci/jenkins-job-url-shortener-ci.xml))
+
+### GitHub Actions ↔ Jenkins 대응 (학습 노트)
+| GitHub Actions | Jenkins (Declarative) |
+|----------------|------------------------|
+| `on: push` | 잡 트리거 / SCM 폴링 / 웹훅 (Phase 5) |
+| `jobs:` | `stages { }` |
+| `runs-on` / `container:` | `agent { docker { image } }` |
+| `steps:` + `uses:` | `steps { }` + 플러그인 / `sh` |
+| `actions/checkout` | `checkout scm` |
+| `actions/upload-artifact` | `archiveArtifacts` |
+| 테스트 리포트 액션 | `junit` 스텝 (Phase 2/4) |
+| 러너(클라우드, GitHub 관리) | 에이전트(자체 호스팅 Docker) |
+
+### 완료 기준 검증 ✅
+- [x] 빌드가 `python:3.12-slim` 컨테이너에서 실행됨(로그의 `docker run ... python:3.12-slim` 확인).
+- [x] pytest 36개 통과, 빌드 페이지에 테스트 결과 표시(`junit` 등록).
+- [x] 같은 커밋 재빌드 시 동일 결과(멱등성 — venv/캐시는 워크스페이스 격리).
+- [x] 테스트를 깨뜨리면 종료 코드≠0 으로 stage 실패 → 빌드 빨간색.
 
 ---
 
