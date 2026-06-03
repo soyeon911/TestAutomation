@@ -25,7 +25,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # 방식 A: 호스트 Docker 사용
     environment:
       # 플러그인이 사전 설치돼 있으므로 설치 마법사를 끈다(다운로드 단계 회피).
-      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"
+      # CSP 완화: publishHTML 로 게시한 Allure 리포트(JS/CSS)가 렌더되도록(학습용 localhost).
+      JAVA_OPTS: >-
+        -Djenkins.install.runSetupWizard=false
+        -Dhudson.model.DirectoryBrowserSupport.CSP=
     group_add:
       # 마운트된 docker.sock 은 Docker Desktop(macOS)에서 root:root(gid 0, srw-rw----)다.
       # jenkins 유저(uid 1000)를 group 0 에 추가해야 소켓 접근(방식 A)이 가능하다.

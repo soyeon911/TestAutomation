@@ -25,4 +25,9 @@ RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 ARG DOCKER_CLI_VERSION=27.3.1
 RUN arch="$(uname -m)" && curl -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz && tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker && rm /tmp/docker.tgz && docker --version
 
+# (3) Allure CLI(Phase 4 리포트 생성용). 컨트롤러는 JDK 보유 → Java로 동작.
+#     미러 무관한 Maven Central에서 받고, JDK의 jar로 압축 해제(unzip 불필요).
+ARG ALLURE_VERSION=2.29.0
+RUN cd /opt && curl -fsSL "https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/${ALLURE_VERSION}/allure-commandline-${ALLURE_VERSION}.zip" -o allure.zip && jar xf allure.zip && rm allure.zip && chmod +x /opt/allure-${ALLURE_VERSION}/bin/allure && ln -s /opt/allure-${ALLURE_VERSION}/bin/allure /usr/local/bin/allure && allure --version
+
 USER jenkins

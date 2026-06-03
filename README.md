@@ -9,7 +9,7 @@ Jenkins 기반 테스트 자동화 파이프라인의 **검증 대상(SUT)** 인
 - [x] **Phase 1** — Jenkins 컨트롤러 구동 (Docker) ([`markdown/02phase1jenkins_setup.md`](markdown/02phase1jenkins_setup.md))
 - [x] **Phase 2** — 기본 파이프라인 (Jenkinsfile) ([`markdown/03phase2basic_pipeline.md`](markdown/03phase2basic_pipeline.md))
 - [x] **Phase 3** — 품질 게이트 & 병렬화 ([`markdown/04phase3quality_gates.md`](markdown/04phase3quality_gates.md))
-- [ ] Phase 4 — 리포트 트렌드
+- [x] **Phase 4** — 리포트 & 트렌드 (JUnit·커버리지·Allure) ([`markdown/05phase4_reporting.md`](markdown/05phase4_reporting.md))
 - [ ] Phase 5 — 트리거
 - [ ] Phase 6 — 고급
 
@@ -189,6 +189,34 @@ Checkout → Setup ──▶ Quality Gates (parallel, failFast=false)
 - [ ] (수동 확인) 포맷/타입을 깨면 해당 게이트만 실패, 커버리지를 80% 미만으로 떨어뜨리면 실패.
 
 > Warnings NG 경고 추이(F3-7)는 선택 항목으로, 차후 `recordIssues`로 ruff/mypy 결과를 시각화해 추가할 수 있다.
+
+---
+
+## Phase 4 — 리포트 & 트렌드 (JUnit · 커버리지 · Allure)
+
+빌드 결과를 "통과/실패"를 넘어 **시각적 리포트와 추이**로 만든다. 파이프라인을 두 단계로 나눈다:
+
+```
+[Build & Quality Gates]  agent: python:3.12-slim (방식 A)
+   Checkout → Setup → Quality Gates(병렬) → reports/ 생성 → stash
+        │  pytest가 junit.xml + coverage.xml(Cobertura) + allure-results 생성
+        ▼
+[Report]  agent: 컨트롤러(JDK17 + Allure CLI 사전 설치)
+   unstash → junit(트렌드) → recordCoverage(추이) → allure generate → publishHTML → archiveArtifacts
+```
+
+핵심 설계 (이 단계의 까다로운 부분 = 포트폴리오 포인트):
+- **Java 분리**: Allure CLI는 Java가 필요한데 테스트 에이전트(`python:3.12-slim`)엔 Java가 없다. 그래서 **빌드/테스트는 docker 에이전트, 리포트 생성은 Java가 있는 컨트롤러**에서 하고, `reports/`를 `stash`/`unstash`로 넘긴다.
+- **Allure CLI 사전 설치**: 설치된 Jenkins Allure 플러그인이 신버전(`org.allurereport`)이라 클래식 `allure` 스텝이 없다. 그래서 컨트롤러 이미지([`ci/Dockerfile.jenkins`](ci/Dockerfile.jenkins))에 Allure CLI를 직접 구워넣고 `allure generate`로 정적 HTML을 만든 뒤 **HTML Publisher**로 게시한다(미러 무관한 Maven Central에서 받음).
+- **CSP 완화**: Jenkins 기본 CSP가 publishHTML로 게시한 Allure 리포트의 JS/CSS를 차단한다. localhost 학습용으로 `-Dhudson.model.DirectoryBrowserSupport.CSP=`로 완화([`ci/docker-compose.yml`](ci/docker-compose.yml)).
+- **실패해도 리포트**: 각 게이트를 `catchError`로 감싸 위반 시 빌드는 빨갛게 표시하되 Report 단계까지 진행 → 실패 빌드의 결과도 본다.
+- **결과 오염 방지**: Setup에서 `rm -rf reports`로 이전 빌드의 `allure-results` 잔재 제거.
+
+### 완료 기준 검증 ✅
+- [x] 테스트 결과 트렌드(`junit`, 89개), 커버리지 리포트+추이(`recordCoverage`, Cobertura) 생성.
+- [x] **Allure 리포트 링크 생성·렌더링**(HTTP 200), 상세 결과 열림.
+- [x] `reports/**`(junit/coverage/allure) 빌드 산출물로 다운로드 가능.
+- [x] 빌드를 거듭하면 트렌드 그래프에 점이 누적.
 
 ---
 

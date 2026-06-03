@@ -15,8 +15,9 @@ docker-workflow
 junit
 # Code Coverage API: 커버리지 트렌드 (Phase 4)
 coverage
-# Allure 리포트 (Phase 4)
+# Allure 리포트 (Phase 4) — CLI 도구는 컨트롤러 이미지에 직접 설치, 리포트 게시는 HTML Publisher 사용
 allure-jenkins-plugin
+htmlpublisher
 # Warnings Next Generation: ruff/mypy 경고 집계 (Phase 3)
 warnings-ng
 # 파이프라인 시각화 (선택)

@@ -17,6 +17,7 @@ dev = [
     "pytest-cov>=5.0",
     "httpx>=0.27",
     "hypothesis>=6.100",
+    "allure-pytest>=2.13",
     "ruff>=0.4",
     "mypy>=1.10",
 ]
