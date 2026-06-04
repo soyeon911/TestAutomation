@@ -11,7 +11,7 @@ Jenkins 기반 테스트 자동화 파이프라인의 **검증 대상(SUT)** 인
 - [x] **Phase 3** — 품질 게이트 & 병렬화 ([`markdown/04phase3quality_gates.md`](markdown/04phase3quality_gates.md))
 - [x] **Phase 4** — 리포트 & 트렌드 (JUnit·커버리지·Allure) ([`markdown/05phase4_reporting.md`](markdown/05phase4_reporting.md))
 - [x] **Phase 5** — 자동 트리거 (Multibranch + 폴링/웹훅) ([`markdown/06phase5triggers.md`](markdown/06phase5triggers.md))
-- [ ] Phase 6 — 고급
+- [x] **Phase 6 · M3** — Shared Library로 파이프라인 추상화 ([`markdown/07phase6advanced.md`](markdown/07phase6advanced.md))
 
 ---
 
@@ -272,6 +272,32 @@ Manage Jenkins → Credentials 에 등록하고 브랜치 소스를 GitHub sourc
 - [x] 주기 스캔으로 사람이 누르지 않아도 빌드 시작.
 - [ ] (직접) `feature/*` push 시 자동 발견 — 위 절차로 확인.
 - [ ] (선택) 웹훅(터널)으로 push 즉시 빌드 / 커밋 상태 표시.
+
+---
+
+## Phase 6 · M3 — Shared Library (파이프라인 추상화)
+
+문서가 포트폴리오 가치 1순위로 꼽은 모듈. 표준 CI 절차를 **공유 라이브러리**로 추출해
+`Jenkinsfile`을 **두 줄**로 만들었다("파이프라인을 추상화·재사용했다"는 설계 역량 증명).
+
+**Before (Phase 4·5)**: `Jenkinsfile`에 ~90줄의 선언적 파이프라인.
+**After (M3)**:
+```groovy
+@Library('url-shortener-shared@main') _
+pythonCI(image: 'python:3.12-slim', covMin: 80)
+```
+
+- 표준 절차는 [`jenkins/shared-library/vars/pythonCI.groovy`](jenkins/shared-library/vars/pythonCI.groovy)에 캡슐화.
+- 전역 라이브러리 등록은 [`ci/configure-shared-library.groovy`](ci/configure-shared-library.groovy)로 **코드화**(Library Path = `jenkins/shared-library` 서브디렉터리).
+- **구조 개선**: scripted로 단일 `node`에서 `docker.inside`(방식 A) 빌드 → 같은 워크스페이스를 컨트롤러가 읽어 리포트 → Phase 4의 `stash`/`unstash`가 불필요해져 더 단순해졌다. 커버리지 소스 페인팅도 워크스페이스에 소스가 있어 정상 동작.
+- 파라미터(`image`, `covMin`)로 다른 Python 프로젝트가 동일 표준을 재사용 가능. (확장: `pythonCI`에 버전 리스트를 받아 M2 매트릭스로 발전 가능.)
+
+> 검증: CI 로직은 동등한 인라인 scripted 파이프라인으로 녹색 확인(89 passed·커버리지·Allure). 라이브러리는 GitHub `main`의 `jenkins/shared-library`에서 로드되므로, 이 변경을 push한 뒤 `url-shortener-ci`/`url-shortener-mb` 빌드로 최종 확인한다.
+
+### 완료 기준 (M3)
+- [x] `Jenkinsfile`이 공유 라이브러리 호출로 간결해짐(2줄).
+- [x] 동일 라이브러리를 다른 프로젝트가 재사용 가능(파라미터화).
+- [ ] (push 후) 라이브러리를 불러 빌드가 녹색.
 
 ---
 
