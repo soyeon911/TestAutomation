@@ -1,7 +1,101 @@
 # URL Shortener CI
 
-Jenkins 기반 테스트 자동화 파이프라인의 **검증 대상(SUT)** 인 FastAPI URL 단축 서비스.
-전체 로드맵은 [`markdown/00overview.md`](markdown/00overview.md) 참고.
+**자체 호스팅 Jenkins로 처음부터 구축한 테스트 자동화 CI/CD 파이프라인**, 그리고 그 검증 대상(SUT)으로
+직접 만든 FastAPI URL 단축 서비스. GitHub Actions로 해본 CI를 **인프라를 직접 운영하는 Jenkins로
+재구성**하며 그 차이를 체득하는 것이 목표다.
+
+> 한 줄 요약: *FastAPI 앱(테스트 89개) → Docker 에이전트 빌드 → 병렬 품질 게이트 → JUnit·커버리지·Allure 리포트 → Multibranch 자동 트리거 → Shared Library로 파이프라인 추상화* 까지, 실제로 동작하는 한 사이클을 끝까지 만들었다.
+
+### 하이라이트
+- **3계층 테스트 89개**(unit/integration/api, Hypothesis 속성 기반 포함), 라인 커버리지 **96%** — 커버리지 80% 게이트로 강제.
+- **병렬 품질 게이트** 4종(`ruff` 린트·포맷 / `mypy` 타입 / `pytest` 커버리지)을 한 빌드에서 동시 검사.
+- **방식 A(Docker 소켓)** 동적 에이전트 — 모든 빌드가 깨끗한 `python:3.12-slim` 컨테이너에서 실행돼 재현성 보장.
+- **리포트 트렌드** — JUnit·커버리지 추이 그래프 + **Allure** 상세 리포트(빌드마다 누적).
+- **Multibranch 자동 트리거** — push/PR 머지 시 사람 개입 없이 빌드("Branch indexing").
+- **Shared Library** — 표준 CI 절차를 `vars/pythonCI.groovy`로 추출해 **Jenkinsfile을 2줄로** 추상화·재사용.
+- **인프라를 코드로** — 커스텀 Jenkins 이미지(플러그인 사전 설치·docker/Allure CLI), 잡·라이브러리 설정까지 저장소에 버전 관리.
+
+### 기술 스택
+| 영역 | 사용 |
+|------|------|
+| 앱 | Python 3.12 · FastAPI · Pydantic v2 · SQLAlchemy 2.x · SQLite |
+| 테스트/품질 | pytest · pytest-cov · Hypothesis · ruff · mypy · allure-pytest |
+| CI/CD | Jenkins LTS(Docker) · Declarative+Scripted Pipeline · Shared Library · Multibranch |
+| 리포트 | JUnit · Code Coverage API(Cobertura) · Allure · HTML Publisher |
+| 인프라 | Docker(방식 A 소켓 마운트) · 커스텀 이미지 · docker-compose |
+
+---
+
+## 아키텍처
+
+### 애플리케이션 (3계층 — 테스트하기 좋은 구조)
+```mermaid
+flowchart TB
+    C["HTTP Client"] --> API["api/routes.py<br/>shorten · redirect · stats · list · delete"]
+    API --> SC["schemas/url.py<br/>Pydantic v2 검증"]
+    API --> CORE["core/<br/>shortcode · expiry — 순수 로직"]
+    API --> REPO["db/repository.py<br/>리포지토리 패턴"]
+    REPO --> MOD["db/models.py<br/>SQLAlchemy · UTCDateTime"]
+    MOD --> DB[("SQLite<br/>테스트: 인메모리")]
+    UNIT["tests/unit"] -. 순수로직 .-> CORE
+    INTEG["tests/integration"] -. repo+DB .-> REPO
+    APIT["tests/api"] -. TestClient .-> API
+```
+
+### CI/CD 파이프라인 흐름 (Phase 6 · M3 기준)
+```mermaid
+flowchart LR
+    PUSH["git push / PR 머지"] --> SCAN["Multibranch 스캔 (H/2)"]
+    SCAN --> JF["Jenkinsfile 2줄<br/>@Library + pythonCI()"]
+    JF --> LIB["Shared Library<br/>vars/pythonCI.groovy"]
+    LIB --> SETUP["docker.inside python:3.12-slim · 방식 A<br/>Setup: venv + pip install"]
+    SETUP --> GATES{{"Quality Gates 병렬<br/>failFast=false"}}
+    GATES --> L["ruff check"]
+    GATES --> F["ruff format --check"]
+    GATES --> T["mypy app"]
+    GATES --> P["pytest · cov≥80%"]
+    L --> REPORT["Report · 컨트롤러 JDK+Allure CLI<br/>JUnit · Coverage · Allure · Archive"]
+    F --> REPORT
+    T --> REPORT
+    P --> REPORT
+```
+
+---
+
+## GitHub Actions → Jenkins 로 다시 만들며 배운 것
+이 프로젝트의 핵심 학습. "관리형 러너"에서 "내가 운영하는 인프라"로 옮기며 드러난 차이들:
+
+| 주제 | GitHub Actions | Jenkins (이 프로젝트) |
+|------|----------------|------------------------|
+| 러너/에이전트 | 클라우드 관리형 러너 | **자체 호스팅 컨트롤러 + Docker 동적 에이전트(방식 A)** 를 내가 운영 |
+| 재사용 | 마켓플레이스 `uses:` 액션 | **플러그인 + Shared Library**(직접 설치·버전 관리) |
+| 워크플로 재사용 | reusable workflow / composite action | **Shared Library `vars/pythonCI()`** |
+| 트리거 | `on: push` 내장 | **웹훅(인바운드 필요) vs 폴링/Multibranch 스캔** — localhost는 웹훅 도달 불가라 스캔으로 |
+| 컨테이너 빌드 | `container:` 잡 | `agent { docker { } }` / `docker.inside` + **소켓 마운트·`--volumes-from` 워크스페이스 공유** |
+| 리포트 | 액션으로 업로드 | **JUnit·Coverage·Allure 플러그인**(+Allure는 Java 필요 → 빌드/리포트 노드 분리) |
+| 운영 현실 | 거의 신경 안 씀 | **이미지 빌드·플러그인 미러·CSP·소켓 권한** 등 인프라를 직접 해결 |
+
+> 한 문장: GitHub Actions가 "YAML로 선언하면 끝"이라면, Jenkins는 **러너 인프라 자체를 설계·운영**해야 했고 — 그 과정(에이전트 격리, 미러 우회, 리포트 도구 실행 환경)이 가장 큰 배움이었다.
+
+## 주요 엔지니어링 의사결정 (왜 이렇게 했나)
+- **방식 A(Docker 소켓 마운트)**: 컨트롤러를 더럽히지 않고 빌드마다 깨끗·격리된 컨테이너에서 실행 → 재현성. 워크스페이스는 docker-workflow의 `--volumes-from`으로 공유됨을 로그로 확인.
+- **플러그인 사전 설치 + `archives.jenkins.io` 고정**: 이 네트워크의 IP가 Jenkins 미러에서 중국 미러로 잘못 라우팅돼 설치가 타임아웃 → 미러 리다이렉트를 안 타는 아카이브에서 직접 받도록 이미지에 구워넣어 **재현 가능·미러 무관**하게.
+- **워크스페이스 venv + 절대경로 호출**: 에이전트가 uid 1000이라 시스템 site-packages에 못 씀 → `.venv`에 격리 설치, `$VENV/bin/...`로 호출(PATH 모호성 제거).
+- **커버리지 게이트 + `catchError`**: 80% 미만이면 빌드 실패(가드레일)하되, 게이트를 `catchError`로 감싸 **실패해도 리포트는 수집**(실패 빌드의 원인도 봐야 하므로).
+- **빌드/리포트 노드 분리(Phase 4) → Shared Library로 단순화(M3)**: Allure CLI가 Java를 요구(에이전트엔 없음) → 리포트를 컨트롤러에서. M3에서 scripted 단일 `node`+`docker.inside`로 바꾸자 **stash/unstash가 불필요**해지고 커버리지 소스 페인팅도 정상화.
+- **`UTCDateTime` 타입 데코레이터**: SQLite가 tz 정보를 안 남겨 만료 비교에서 naive/aware 충돌 → 읽을 때 UTC를 보장해 해결(통합 테스트로 검증).
+- **Hypothesis 속성 기반 테스트**: "생성 코드는 항상 유효", "같은 시드 → 같은 코드" 같은 **불변식**을 무작위 입력으로 검증.
+
+## 스크린샷 (캡처 가이드)
+아래 화면을 캡처해 `docs/img/`에 넣고 이 절에 임베드하면 설득력이 크게 오른다(빌드를 2회 이상 돌린 뒤):
+- [ ] **Stage View / Blue Ocean** — 병렬 게이트 4갈래 (`url-shortener-ci` 잡 페이지 / Open Blue Ocean)
+- [ ] **Test Result Trend** 그래프 — 잡 페이지 하단 (빌드 ≥2회 후 누적)
+- [ ] **Coverage** 리포트·추이 — 빌드 페이지 → Coverage
+- [ ] **Allure Report** — 빌드 페이지 → Allure Report
+- [ ] **Multibranch** 브랜치 자동 발견 — `url-shortener-mb` 잡 페이지
+- [ ] **라이브러리 로드 로그** — 콘솔의 `Loading library url-shortener-shared@main` 줄 + 2줄짜리 Jenkinsfile
+
+---
 
 ## 진행 상황
 
