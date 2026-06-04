@@ -10,7 +10,7 @@ Jenkins 기반 테스트 자동화 파이프라인의 **검증 대상(SUT)** 인
 - [x] **Phase 2** — 기본 파이프라인 (Jenkinsfile) ([`markdown/03phase2basic_pipeline.md`](markdown/03phase2basic_pipeline.md))
 - [x] **Phase 3** — 품질 게이트 & 병렬화 ([`markdown/04phase3quality_gates.md`](markdown/04phase3quality_gates.md))
 - [x] **Phase 4** — 리포트 & 트렌드 (JUnit·커버리지·Allure) ([`markdown/05phase4_reporting.md`](markdown/05phase4_reporting.md))
-- [ ] Phase 5 — 트리거
+- [x] **Phase 5** — 자동 트리거 (Multibranch + 폴링/웹훅) ([`markdown/06phase5triggers.md`](markdown/06phase5triggers.md))
 - [ ] Phase 6 — 고급
 
 ---
@@ -217,6 +217,61 @@ Checkout → Setup ──▶ Quality Gates (parallel, failFast=false)
 - [x] **Allure 리포트 링크 생성·렌더링**(HTTP 200), 상세 결과 열림.
 - [x] `reports/**`(junit/coverage/allure) 빌드 산출물로 다운로드 가능.
 - [x] 빌드를 거듭하면 트렌드 그래프에 점이 누적.
+
+---
+
+## Phase 5 — 자동 트리거 (Multibranch + 폴링/웹훅)
+
+"Build Now"를 사람이 누르는 대신, 코드 변경이 빌드를 자동으로 일으키게 한다.
+
+> **환경 제약**: Jenkins가 `localhost:8080`이라 GitHub가 인터넷에서 직접 웹훅을 보낼 수 없다.
+> 그래서 이 환경에서 실제 검증 가능한 트리거는 **Multibranch 주기 스캔**과 **SCM 폴링**이고,
+> 진짜 웹훅은 터널(smee/ngrok)이 있어야 한다.
+
+### Multibranch Pipeline (검증됨 ✅)
+`url-shortener-mb` 잡(Multibranch)이 GitHub 저장소를 **Git branch source**로 스캔해
+`Jenkinsfile`이 있는 브랜치를 자동 발견하고 각자 빌드한다. (설정: [`ci/jenkins-job-url-shortener-mb.xml`](ci/jenkins-job-url-shortener-mb.xml))
+
+- **주기 스캔**: `H/2 * * * *`(2분) — 웹훅 없이도 새 커밋/브랜치를 발견해 빌드.
+- **자동 트리거 확인**: `main`이 자동 발견되어 빌드됐고, 트리거 원인이 **"Branch indexing"**(사람이 누르지 않음).
+- **공개 저장소**라 토큰 없이 `git ls-remote`로 브랜치 발견.
+- **고아 정리**: 삭제된 브랜치의 잡은 자동 정리(orphaned item strategy).
+
+**새 브랜치 자동 발견 테스트** (직접 해보기):
+```bash
+git switch -c feature/demo
+git commit --allow-empty -m "trigger multibranch"
+git push -u origin feature/demo
+# → 2분 내 url-shortener-mb 에 feature%2Fdemo 잡이 자동 생성·빌드됨
+#    (즉시 보려면 잡 페이지에서 "Scan Multibranch Pipeline Now")
+```
+
+### SCM 폴링 (단일 잡 대안)
+단일 `url-shortener-ci` 잡을 자동화하려면 `Jenkinsfile`에 폴링 트리거를 추가한다:
+```groovy
+options { ... }
+triggers { pollSCM('H/5 * * * *') }   // 5분마다 새 커밋 확인, 있으면 빌드
+```
+웹훅 없이 동작하지만 지연이 있다. (Multibranch 스캔과 역할이 겹치므로 둘 중 하나만)
+
+### 웹훅 (프로덕션 방식 — 터널 필요)
+push 즉시 빌드하려면 GitHub 웹훅을 쓴다. localhost는 도달 불가하므로 터널로 중계:
+```bash
+# smee.io 예시
+npx smee-client -u https://smee.io/<your-channel> -t http://localhost:8080/github-webhook/
+# 또는: ngrok http 8080  → 공인 URL 을 GitHub Settings→Webhooks 에 /github-webhook/ 로 등록
+```
+
+### 커밋 상태 보고 (선택)
+빌드 결과를 GitHub 커밋/PR 체크로 표시하려면 **GitHub PAT**(repo + status 권한)를
+Manage Jenkins → Credentials 에 등록하고 브랜치 소스를 GitHub source로 바꾼다.
+브랜치 보호 규칙의 "상태 통과 필수"와 결합하면 통과해야 머지되는 흐름이 된다.
+
+### 완료 기준 검증
+- [x] Multibranch가 `main`을 자동 발견·빌드(트리거 원인 "Branch indexing").
+- [x] 주기 스캔으로 사람이 누르지 않아도 빌드 시작.
+- [ ] (직접) `feature/*` push 시 자동 발견 — 위 절차로 확인.
+- [ ] (선택) 웹훅(터널)으로 push 즉시 빌드 / 커밋 상태 표시.
 
 ---
 
