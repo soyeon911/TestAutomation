@@ -86,14 +86,25 @@ flowchart LR
 - **`UTCDateTime` 타입 데코레이터**: SQLite가 tz 정보를 안 남겨 만료 비교에서 naive/aware 충돌 → 읽을 때 UTC를 보장해 해결(통합 테스트로 검증).
 - **Hypothesis 속성 기반 테스트**: "생성 코드는 항상 유효", "같은 시드 → 같은 코드" 같은 **불변식**을 무작위 입력으로 검증.
 
-## 스크린샷 (캡처 가이드)
-아래 화면을 캡처해 `docs/img/`에 넣고 이 절에 임베드하면 설득력이 크게 오른다(빌드를 2회 이상 돌린 뒤):
-- [ ] **Stage View / Blue Ocean** — 병렬 게이트 4갈래 (`url-shortener-ci` 잡 페이지 / Open Blue Ocean)
-- [ ] **Test Result Trend** 그래프 — 잡 페이지 하단 (빌드 ≥2회 후 누적)
-- [ ] **Coverage** 리포트·추이 — 빌드 페이지 → Coverage
-- [ ] **Allure Report** — 빌드 페이지 → Allure Report
-- [ ] **Multibranch** 브랜치 자동 발견 — `url-shortener-mb` 잡 페이지
-- [ ] **라이브러리 로드 로그** — 콘솔의 `Loading library url-shortener-shared@main` 줄 + 2줄짜리 Jenkinsfile
+## 스크린샷
+
+### 병렬 파이프라인 (Blue Ocean)
+`Checkout → Setup → Quality Gates(Format·Lint·Test·Type 병렬) → Report` 가 모두 통과(녹색).
+Report 단계에서 JUnit·Coverage(Cobertura)·Allure 생성·HTML 게시·아카이브가 차례로 실행된다.
+
+![Blue Ocean 병렬 파이프라인](docs/img/blue_ocean.png)
+
+### 커버리지 리포트 & 추이
+라인 96.41%·브랜치 90%. 빌드(#7~#10)를 거듭하며 **커버리지 추이 그래프에 점이 누적**된다.
+
+![Coverage 리포트와 추이](docs/img/coverage_overview.png)
+
+### Allure 리포트
+89개 테스트 100% 통과. 3계층(unit 50 · api 27 · integration 12)으로 스위트가 분리돼 있다.
+
+![Allure 리포트 개요](docs/img/allure_report.png)
+
+> 이미지는 [`docs/img/`](docs/img/)에 보관. (추가 후보: JUnit Test Result Trend, Multibranch 브랜치 발견 화면)
 
 ---
 
